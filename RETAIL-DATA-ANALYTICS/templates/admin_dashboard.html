@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Retail Analytics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard">
+        <header class="dashboard-header">
+            <div class="header-left">
+                <h1>🛡️ Admin Dashboard</h1>
+                <div class="datetime">{{ datetime.now().strftime('%A, %B %d, %Y - %H:%M:%S') }}</div>
+            </div>
+            <div class="user-info">
+                <span>Welcome, <strong>{{ current_user.username }}</strong></span>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </header>
+
+        <!-- Payment Alerts Section -->
+        {% if payment_alerts %}
+        <div class="payment-alerts-section">
+            <h2>💰 Payment Alerts</h2>
+            <div class="alerts-grid">
+                {% for alert in payment_alerts %}
+                <div class="alert-card {% if alert.status == 'overdue' %}overdue{% else %}due-soon{% endif %}">
+                    <div class="alert-icon">
+                        {% if alert.status == 'overdue' %}🚨{% else %}⏰{% endif %}
+                    </div>
+                    <div class="alert-content">
+                        <strong>{{ alert.user.username }}</strong> - {{ alert.message }}
+                        <br><small>Monthly Fee: ${{ alert.user.monthly_fee }}</small>
+                    </div>
+                    {% if alert.status == 'overdue' %}
+                    <form action="{{ url_for('record_payment_route', user_id=alert.user.id) }}" method="POST" style="margin-left: auto;">
+                        <button type="submit" class="payment-btn">Record Payment</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- System Overview KPIs -->
+        <div class="kpi-grid">
+            {% set total_products = 0 %}
+            {% set total_low_stock = 0 %}
+            {% set total_inventory_value = 0 %}
+            {% set frozen_accounts = 0 %}
+
+            {% for store in stores %}
+                {% set total_products = total_products + store.products|length %}
+                {% for product in store.products %}
+                    {% if product['quantity'] <= product['buffer_stock'] %}
+                        {% set total_low_stock = total_low_stock + 1 %}
+                    {% endif %}
+                    {% set total_inventory_value = total_inventory_value + (product['quantity'] * product['price']) %}
+                {% endfor %}
+            {% endfor %}
+
+            {% for user in users %}
+                {% if user.account_status == 'frozen' %}
+                    {% set frozen_accounts = frozen_accounts + 1 %}
+                {% endif %}
+            {% endfor %}
+
+            <div class="kpi-card total-users">
+                <h3>👥 Total Users</h3>
+                <div class="kpi-value">{{ users|length }}/100</div>
+            </div>
+            <div class="kpi-card total-stores">
+                <h3>🏪 Total Stores</h3>
+                <div class="kpi-value">{{ stores|length }}</div>
+            </div>
+            <div class="kpi-card total-products">
+                <h3>📦 Total Products</h3>
+                <div class="kpi-value">{{ total_products }}</div>
+            </div>
+            <div class="kpi-card low-stock">
+                <h3>🧊 Frozen Accounts</h3>
+                <div class="kpi-value">{{ frozen_accounts }}</div>
+            </div>
+        </div>
+
+        <!-- System Analytics -->
+        <div class="store-section">
+            <h2>📊 System-Wide Analytics</h2>
+            <div class="analytics-section">
+                <div class="analytics-grid">
+                    <!-- Store Performance Chart -->
+                    <div class="analytics-card">
+                        <div id="storePerformanceChart"></div>
+                    </div>
+                    <!-- Product Distribution Chart -->
+                    <div class="analytics-card">
+                        <div id="productDistributionChart"></div>
+                    </div>
+                    <!-- Inventory Value Chart -->
+                    <div class="analytics-card">
+                        <div id="inventoryValueChart"></div>
+                    </div>
+                    <!-- User Activity Chart -->
+                    <div class="analytics-card">
+                        <div id="userActivityChart"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stores Overview -->
+        <div class="stores-overview">
+            {% for store in stores %}
+            <div class="store-section">
+                <div class="store-header">
+                    <h2>🏪 {{ store.name }}</h2>
+                    <div class="store-actions">
+                        <a href="{{ url_for('export_csv', store_id=store.id) }}" class="action-btn export-btn">📊 Export Data</a>
+                    </div>
+                </div>
+
+                <div class="kpi-grid">
+                    <div class="kpi-card total-products">
+                        <h3>Products</h3>
+                        <div class="kpi-value">{{ store.products|length }}/30</div>
+                    </div>
+                    <div class="kpi-card low-stock">
+                        <h3>Low Stock</h3>
+                        <div class="kpi-value">
+                            {% set low_stock_count = 0 %}
+                            {% for product in store.products %}
+                                {% if product['quantity'] <= product['buffer_stock'] %}
+                                    {% set low_stock_count = low_stock_count + 1 %}
+                                {% endif %}
+                            {% endfor %}
+                            {{ low_stock_count }}
+                        </div>
+                    </div>
+                    <div class="kpi-card total-stores">
+                        <h3>Inventory Value</h3>
+                        <div class="kpi-value" style="font-size: 1.6rem;">
+                            {% set store_value = 0 %}
+                            {% for product in store.products %}
+                                {% set store_value = store_value + (product['quantity'] * product['price']) %}
+                            {% endfor %}
+                            ${{ "{:,.0f}".format(store_value) }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analytics-section">
+                    {% set analytics = generate_analytics(store.id) %}
+                    {% if analytics %}
+                    <div class="analytics-grid">
+                        <div class="analytics-card">
+                            {{ analytics.sales_by_product | safe }}
+                        </div>
+                        <div class="analytics-card">
+                            {{ analytics.daily_trend | safe }}
+                        </div>
+                        <div class="analytics-card">
+                            {{ analytics.peak_hours | safe }}
+                        </div>
+                        <div class="analytics-card">
+                            {{ analytics.category_performance | safe }}
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="no-data">
+                        📊 No sales data available for this store
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- News and Updates Management -->
+        <div class="store-section">
+            <h2>📰 News & Updates Management</h2>
+
+            <!-- Add News Form -->
+            <div class="form-section">
+                <h3>📢 Publish News/Update</h3>
+                <form action="{{ url_for('add_news_route') }}" method="POST" class="news-form">
+                    <input type="text" name="title" placeholder="News Title" required>
+                    <textarea name="content" placeholder="News Content" rows="4" required></textarea>
+                    <select name="priority" required>
+                        <option value="normal">Normal Priority</option>
+                        <option value="high">High Priority</option>
+                        <option value="low">Low Priority</option>
+                    </select>
+                    <button type="submit">📢 Publish News</button>
+                </form>
+            </div>
+
+            <!-- Active News List -->
+            <div class="news-list">
+                <h3>📰 Published News</h3>
+                {% if news %}
+                <div class="news-grid">
+                    {% for article in news %}
+                    <div class="news-card {% if article.priority == 'high' %}high-priority{% endif %}">
+                        <div class="news-header">
+                            <h4>{{ article.title }}</h4>
+                            <span class="priority-badge priority-{{ article.priority }}">{{ article.priority.title() }}</span>
+                        </div>
+                        <p>{{ article.content }}</p>
+                        <div class="news-meta">
+                            <small>Published: {{ article.created_date.strftime('%Y-%m-%d %H:%M') }}</small>
+                            <form action="{{ url_for('deactivate_news_route', news_id=article.id) }}" method="POST" style="display: inline;">
+                                <button type="submit" class="deactivate-btn" onclick="return confirm('Deactivate this news article?')">🚫 Deactivate</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="no-data">📰 No active news articles</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Forensic Audit Section -->
+        <div class="store-section">
+            <h2>🔍 Forensic Audit & Security</h2>
+
+            <div class="audit-overview">
+                <div class="audit-actions">
+                    <a href="{{ url_for('forensic_audit') }}" class="action-btn" style="background: #8b5cf6;">🔍 Full Audit Log</a>
+                    <button onclick="exportAuditLog()" class="action-btn" style="background: #ef4444;">📥 Export Audit</button>
+                </div>
+
+                <div class="recent-audit-logs">
+                    <h3>🕒 Recent System Activity (Last 10)</h3>
+                    <div class="audit-log-table">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                                    <th style="padding: 12px; text-align: left; font-weight: 600;">Timestamp</th>
+                                    <th style="padding: 12px; text-align: left; font-weight: 600;">User</th>
+                                    <th style="padding: 12px; text-align: left; font-weight: 600;">Action</th>
+                                    <th style="padding: 12px; text-align: left; font-weight: 600;">Details</th>
+                                    <th style="padding: 12px; text-align: left; font-weight: 600;">IP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in audit_logs[:10] %}
+                                <tr style="border-bottom: 1px solid #e2e8f0;">
+                                    <td style="padding: 8px; font-size: 0.875rem;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td style="padding: 8px; font-weight: 600; color: #4f46e5;">{{ log.username }}</td>
+                                    <td style="padding: 8px;">
+                                        <span class="action-badge action-{{ log.action.replace('_', '-') }}">
+                                            {{ log.action.replace('_', ' ').title() }}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 8px; font-size: 0.875rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis;">{{ log.details }}</td>
+                                    <td style="padding: 8px; font-size: 0.875rem; color: #64748b;">{{ log.ip_address }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Menu -->
+        <div class="navigation-menu">
+            <div class="nav-buttons">
+                <a href="{{ url_for('admin_dashboard') }}" class="nav-btn">🛡️ Admin Dashboard</a>
+                <a href="{{ url_for('forensic_audit') }}" class="nav-btn">🔍 Forensic Audit</a>
+                <button onclick="showAdminAccounting()" class="nav-btn">📊 View All Accounting</button>
+            </div>
+        </div>
+
+        <!-- Accounting Management Section -->
+        <div class="store-section">
+            <h2>📊 System Accounting Management</h2>
+            
+            <div class="form-section">
+                <h3>⚙️ Configure Accounting Access</h3>
+                <form action="{{ url_for('update_accounting_settings') }}" method="POST" class="user-form">
+                    <input type="password" name="new_password" placeholder="New Accounting Password" value="1234">
+                    <select name="user_id">
+                        <option value="">Select User to Grant Access</option>
+                        {% for user in users %}
+                            {% if not user.is_admin %}
+                            <option value="{{ user.id }}">{{ user.username }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <button type="submit">Update Settings</button>
+                </form>
+            </div>
+
+            <div class="accounting-overview">
+                <h3>💰 System-wide Financial Overview</h3>
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <h4>Total System Revenue</h4>
+                        <div class="kpi-value">
+                            {% set total_system_revenue = 0 %}
+                            {% for sale in [] %}
+                                {% set total_system_revenue = total_system_revenue + sale.total_amount %}
+                            {% endfor %}
+                            ${{ "{:,.2f}".format(total_system_revenue) }}
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <h4>Active Credits</h4>
+                        <div class="kpi-value">{{ "{:,}".format(0) }}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <h4>Bad Debts</h4>
+                        <div class="kpi-value">{{ "{:,}".format(0) }}</div>
+                    </div>
+                </div>
+                
+                <button onclick="downloadSystemReport()" class="action-btn" style="background: #10b981;">📊 Download System Report</button>
+            </div>
+        </div>
+
+        <!-- Private Messaging Section -->
+        <div class="store-section">
+            <h2>💬 Private Messaging</h2>
+
+            <!-- Send Message Form -->
+            <div class="form-section">
+                <h3>📨 Send Private Message</h3>
+                <form action="{{ url_for('send_message_route') }}" method="POST" class="message-form">
+                    <select name="recipient_id" required>
+                        <option value="">Select Shop Owner</option>
+                        {% for user in users %}
+                            {% if not user.is_admin %}
+                            <option value="{{ user.id }}">{{ user.username }} ({{ user.email }})</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <input type="text" name="subject" placeholder="Message Subject" required>
+                    <textarea name="content" placeholder="Message Content" rows="4" required></textarea>
+                    <button type="submit">📨 Send Message</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- User Management Section -->
+        <div class="store-section">
+            <h2>👥 User Management</h2>
+
+            <!-- Add New User Form -->
+            <div class="form-section">
+                <h3>➕ Add New User</h3>
+                <form action="{{ url_for('add_user_route') }}" method="POST" class="user-form">
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="email" name="email" placeholder="Email Address" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" name="is_admin"> Admin User
+                    </label>
+                    <button type="submit">Add User</button>
+                </form>
+            </div>
+
+            <!-- Add New Store Form -->
+            <div class="form-section">
+                <h3>🏪 Add New Store</h3>
+                <form action="{{ url_for('add_store_route') }}" method="POST" class="store-form">
+                    <input type="text" name="name" placeholder="Store Name" required>
+                    <select name="user_id" required>
+                        <option value="">Select Store Owner</option>
+                        {% for user in users %}
+                            {% if not user.is_admin %}
+                            <option value="{{ user.id }}">{{ user.username }} ({{ user.email }})</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <input type="text" name="address" placeholder="Store Address">
+                    <input type="text" name="phone" placeholder="Phone Number">
+                    <button type="submit">Create Store</button>
+                </form>
+            </div>
+
+            <!-- Users List -->
+            <div class="users-list">
+                <h3>👤 All Users ({{ users|length }}/50 max)</h3>
+                <div class="users-grid">
+                    {% for user in users %}
+                    <div class="user-card {% if user.account_status == 'frozen' %}frozen-account{% elif user.get('pending_deletion') %}pending-deletion{% endif %}">
+                        <h4>{{ user.username }}
+                            {% if user.account_status == 'frozen' %}
+                            <span style="color: #ef4444; font-size: 0.8em;">🧊 FROZEN</span>
+                            {% endif %}
+                        </h4>
+                        <p><strong>Email:</strong> {{ user.email }}</p>
+                        <p><strong>Role:</strong> 
+                            <span style="color: {% if user.is_admin %}#8b5cf6{% else %}#10b981{% endif %}; font-weight: 600;">
+                                {{ "🛡️ Admin" if user.is_admin else "🏪 Shop Owner" }}
+                            </span>
+                        </p>
+                        <p><strong>Status:</strong> 
+                            <span style="color: {% if user.account_status == 'active' %}#10b981{% elif user.account_status == 'pending_deletion' %}#f59e0b{% else %}#ef4444{% endif %}; font-weight: 600;">
+                                {% if user.account_status == 'pending_deletion' %}
+                                    ⏳ Deletion Pending
+                                {% else %}
+                                    {{ user.account_status.title() }}
+                                {% endif %}
+                            </span>
+                        </p>
+                        {% if user.get('pending_deletion') and user.get('deletion_scheduled') %}
+                        <p><strong>Deletion Time:</strong> 
+                            <span style="color: #f59e0b; font-weight: 600;">
+                                {{ (user.deletion_scheduled + timedelta(hours=24)).strftime('%Y-%m-%d %H:%M') }}
+                            </span>
+                        </p>
+                        {% endif %}
+                        {% if not user.is_admin %}
+                        <p><strong>Monthly Fee:</strong> ${{ user.monthly_fee }}</p>
+                        <p><strong>Last Payment:</strong> {{ user.last_payment_date.strftime('%Y-%m-%d') }}</p>
+                        {% endif %}
+                        <p><strong>Created:</strong> {{ user.created_date.strftime('%Y-%m-%d') }}</p>
+
+                        <!-- Show user's stores -->
+                        {% set user_stores = [] %}
+                        {% for store in stores %}
+                            {% if store.user_id == user.id %}
+                                {% set _ = user_stores.append(store) %}
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if user_stores %}
+                        <p><strong>Stores:</strong> 
+                            {% for store in user_stores %}
+                                <span style="background: #f0f9ff; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 4px;">{{ store.name }}</span>
+                            {% endfor %}
+                        </p>
+                        {% endif %}
+
+                        {% if user.id != current_user.id %}
+                        <div class="user-actions">
+                            <!-- Account Status Toggle -->
+                            {% if user.account_status == 'active' %}
+                            <form action="{{ url_for('freeze_account_route', user_id=user.id) }}" method="POST" style="display: inline;">
+                                <button type="submit" class="freeze-btn" onclick="return confirm('🧊 Freeze {{ user.username }}\'s account?')">🧊 Freeze Account</button>
+                            </form>
+                            {% else %}
+                            <form action="{{ url_for('unfreeze_account_route', user_id=user.id) }}" method="POST" style="display: inline;">
+                                <button type="submit" class="unfreeze-btn" onclick="return confirm('✅ Unfreeze {{ user.username }}\'s account?')">✅ Unfreeze Account</button>
+                            </form>
+                            {% endif %}
+
+                            <!-- Reset Password -->
+                            <form action="{{ url_for('reset_password_route', user_id=user.id) }}" method="POST" style="display: inline; margin-left: 5px;">
+                                <input type="password" name="new_password" placeholder="New Password" required style="width: 120px; padding: 5px; font-size: 12px;">
+                                <button type="submit" class="reset-password-btn" onclick="return confirm('🔑 Reset password for {{ user.username }}?')">🔑 Reset Password</button>
+                            </form>
+
+                            <!-- Record Payment (for non-admins) -->
+                            {% if not user.is_admin %}
+                            <form action="{{ url_for('record_payment_route', user_id=user.id) }}" method="POST" style="display: inline; margin-left: 5px;">
+                                <button type="submit" class="payment-btn" onclick="return confirm('💰 Record payment for {{ user.username }}?')">💰 Record Payment</button>
+                            </form>
+                            {% endif %}
+
+                            <!-- Delete/Cancel Delete User -->
+                            {% if user.get('pending_deletion') %}
+                            <form action="{{ url_for('cancel_deletion_route', user_id=user.id) }}" method="POST" style="display: inline; margin-left: 5px;">
+                                <button type="submit" class="cancel-delete-btn" onclick="return confirm('✅ Cancel deletion for {{ user.username }}?')">✅ Cancel Delete</button>
+                            </form>
+                            {% else %}
+                            <form action="{{ url_for('delete_user_route', user_id=user.id) }}" method="POST" style="display: inline; margin-left: 5px;">
+                                <button type="submit" class="delete-btn" onclick="return confirm('⚠️ Mark {{ user.username }} for deletion? Account will be deleted in 24 hours.')">🗑️ Schedule Delete</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup & Recovery Section -->
+        <div class="store-section">
+            <h2>🔧 System Maintenance</h2>
+
+            <div class="backup-controls">
+                <h3>Backup & Recovery</h3>
+                <div class="form-section">
+                    <h4>Create New Backup</h4>
+                    <form method="POST" action="{{ url_for('create_backup_route') }}">
+                        <button type="submit" class="action-btn" style="background-color: #4CAF50;">Create Backup Now</button>
+                    </form>
+                </div>
+
+                <div class="backup-list">
+                    <h4>Available Backups</h4>
+                    <div id="backup-list">Loading...</div>
+                    <div class="form-section">
+                        <label for="backup-select">Restore Backup:</label>
+                        <select id="backup-select" name="backup_filename">
+                            <option value="">Select a backup to restore...</option>
+                        </select>
+                        <button onclick="restoreBackup()" class="action-btn" style="background-color: #f44336;">Restore Selected</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // System-wide analytics charts
+
+        // Store Performance Chart
+        const storeData = {{ stores|tojson }};
+        const storeNames = storeData.map(store => store.name);
+        const storeProductCounts = storeData.map(store => store.products.length);
+
+        Plotly.newPlot('storePerformanceChart', [{
+            x: storeNames,
+            y: storeProductCounts,
+            type: 'bar',
+            marker: {
+                color: ['#667eea', '#764ba2', '#10b981', '#f59e0b', '#ef4444']
+            }
+        }], {
+            title: '🏪 Products per Store',
+            xaxis: { title: 'Stores' },
+            yaxis: { title: 'Number of Products' }
+        });
+
+        // Product Distribution Chart  
+        const totalProducts = storeProductCounts.reduce((a, b) => a + b, 0);
+        const storePercentages = storeProductCounts.map(count => ((count / totalProducts) * 100).toFixed(1));
+
+        Plotly.newPlot('productDistributionChart', [{
+            values: storeProductCounts,
+            labels: storeNames,
+            type: 'pie',
+            marker: {
+                colors: ['#667eea', '#764ba2', '#10b981', '#f59e0b', '#ef4444']
+            }
+        }], {
+            title: '📦 Product Distribution'
+        });
+
+        // Inventory Value Chart
+        const inventoryValues = storeData.map(store => {
+            return store.products.reduce((total, product) => total + (product.quantity * product.price), 0);
+        });
+
+        Plotly.newPlot('inventoryValueChart', [{
+            x: storeNames,
+            y: inventoryValues,
+            type: 'bar',
+            marker: {
+                color: '#10b981'
+            }
+        }], {
+            title: '💰 Inventory Value by Store',
+            xaxis: { title: 'Stores' },
+            yaxis: { title: 'Inventory Value ($)' }
+        });
+
+        // User Activity Chart (simplified)
+        const userData = {{ users|tojson }};
+        const adminCount = userData.filter(user => user.is_admin).length;
+        const shopOwnerCount = userData.filter(user => !user.is_admin).length;
+
+        Plotly.newPlot('userActivityChart', [{
+            values: [adminCount, shopOwnerCount],
+            labels: ['Admins', 'Shop Owners'],
+            type: 'pie',
+            marker: {
+                colors: ['#8b5cf6', '#10b981']
+            }
+        }], {
+            title: '👥 User Distribution'
+        });
+
+        // Auto-refresh payment alerts every 5 minutes
+        setInterval(function() {
+            location.reload();
+        }, 300000);
+
+        // Load backup list
+        function loadBackups() {
+            fetch('/admin/list_backups')
+                .then(response => response.json())
+                .then(data => {
+                    const backupList = document.getElementById('backup-list');
+                    const backupSelect = document.getElementById('backup-select');
+
+                    if (data.backups && data.backups.length > 0) {
+                        backupList.innerHTML = data.backups.map(backup => 
+                            `<div class="backup-item">
+                                <strong>${backup.filename}</strong> 
+                                (${backup.size_mb} MB, ${backup.age_hours}h ago)
+                                <br><small>Created: ${backup.created}</small>
+                            </div>`
+                        ).join('');
+
+                        // Populate select dropdown
+                        backupSelect.innerHTML = '<option value="">Select a backup to restore...</option>' +
+                            data.backups.map(backup => 
+                                `<option value="${backup.filename}">${backup.filename} (${backup.age_hours}h ago)</option>`
+                            ).join('');
+                    } else {
+                        backupList.innerHTML = '<p>No backups available</p>';
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('backup-list').innerHTML = '<p>Error loading backups</p>';
+                });
+        }
+
+        function restoreBackup() {
+            const select = document.getElementById('backup-select');
+            const filename = select.value;
+
+            if (!filename) {
+                alert('Please select a backup file to restore.');
+                return;
+            }
+
+            if (confirm(`Are you sure you want to restore from ${filename}? This will overwrite all current data!`)) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/admin/restore_backup';
+
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'backup_filename';
+                input.value = filename;
+
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+
+        // Load backups on page load
+        document.addEventListener('DOMContentLoaded', loadBackups);
+
+        function showAdminAccounting() {
+            // Open accounting view for admin
+            window.open('/admin/accounting_view', '_blank');
+        }
+
+        function downloadSystemReport() {
+            window.open('/admin/download_system_report', '_blank');
+        }
+    </script>
+
+    <!-- Admin Accounting Modal -->
+    <div id="adminAccountingModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📊 System Accounting Overview</h2>
+                <span class="close" onclick="closeAdminAccountingModal()">&times;</span>
+            </div>
+            <div id="adminAccountingContent">
+                <!-- Admin accounting content will be loaded here -->
+            </div>
+        </div>
+    </div>
+</body>
+</html>

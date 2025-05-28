@@ -1,0 +1,33 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Retail Analytics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="login-container">
+        <form method="POST" class="login-form">
+            <h2 class="gradient-text">Welcome Back</h2>
+            <p style="color: #64748b; margin-bottom: 25px;">Sign in to your retail analytics dashboard</p>
+            
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <input type="text" name="username" placeholder="Enter your username" required>
+            <input type="password" name="password" placeholder="Enter your password" required>
+            <button type="submit">Sign In</button>
+            
+            <p>New to our platform? <a href="{{ url_for('register') }}">Create an account</a></p>
+        </form>
+    </div>
+</body>
+</html>

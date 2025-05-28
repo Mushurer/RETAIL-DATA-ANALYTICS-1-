@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forensic Audit - Security Analysis</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard">
+        <header class="dashboard-header">
+            <div class="header-left">
+                <h1>🔍 Forensic Audit & Security Analysis</h1>
+                <div class="datetime">{{ datetime.now().strftime('%A, %B %d, %Y - %H:%M:%S') }}</div>
+            </div>
+            <div class="user-info">
+                <a href="{{ url_for('admin_dashboard') }}" class="action-btn">← Back to Admin</a>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </header>
+
+        <!-- Audit Filters -->
+        <div class="store-section">
+            <h2>🔧 Audit Filters</h2>
+            <form method="GET" class="audit-filters">
+                <div class="filter-row">
+                    <select name="user_id">
+                        <option value="">All Users</option>
+                        {% for user in users %}
+                        <option value="{{ user.id }}" {% if current_filters.user_id == user.id %}selected{% endif %}>
+                            {{ user.username }} ({{ "Admin" if user.is_admin else "Shop Owner" }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    
+                    <select name="action">
+                        <option value="">All Actions</option>
+                        <option value="login_success" {% if current_filters.action == 'login_success' %}selected{% endif %}>Login Success</option>
+                        <option value="login_failed" {% if current_filters.action == 'login_failed' %}selected{% endif %}>Login Failed</option>
+                        <option value="sale_recorded" {% if current_filters.action == 'sale_recorded' %}selected{% endif %}>Sale Recorded</option>
+                        <option value="user_deleted" {% if current_filters.action == 'user_deleted' %}selected{% endif %}>User Deleted</option>
+                        <option value="unauthorized_access" {% if current_filters.action == 'unauthorized_access' %}selected{% endif %}>Unauthorized Access</option>
+                        <option value="audit_access" {% if current_filters.action == 'audit_access' %}selected{% endif %}>Audit Access</option>
+                    </select>
+                    
+                    <input type="date" name="date_from" value="{{ current_filters.date_from or '' }}" placeholder="From Date">
+                    <input type="date" name="date_to" value="{{ current_filters.date_to or '' }}" placeholder="To Date">
+                    
+                    <select name="limit">
+                        <option value="100" {% if current_filters.limit == 100 %}selected{% endif %}>100 Results</option>
+                        <option value="500" {% if current_filters.limit == 500 %}selected{% endif %}>500 Results</option>
+                        <option value="1000" {% if current_filters.limit == 1000 %}selected{% endif %}>1000 Results</option>
+                    </select>
+                    
+                    <button type="submit" class="action-btn">🔍 Apply Filters</button>
+                    <a href="{{ url_for('forensic_audit') }}" class="action-btn" style="background: #64748b;">🔄 Clear</a>
+                </div>
+            </form>
+        </div>
+
+        <!-- Audit Statistics -->
+        <div class="kpi-grid">
+            <div class="kpi-card total-users">
+                <h3>📊 Total Events</h3>
+                <div class="kpi-value">{{ audit_logs|length }}</div>
+            </div>
+            <div class="kpi-card total-stores">
+                <h3>🔐 Failed Logins</h3>
+                <div class="kpi-value">
+                    {{ audit_logs|selectattr('action', 'equalto', 'login_failed')|list|length }}
+                </div>
+            </div>
+            <div class="kpi-card total-products">
+                <h3>🛒 Sales Recorded</h3>
+                <div class="kpi-value">
+                    {{ audit_logs|selectattr('action', 'equalto', 'sale_recorded')|list|length }}
+                </div>
+            </div>
+            <div class="kpi-card low-stock">
+                <h3>⚠️ Security Events</h3>
+                <div class="kpi-value">
+                    {{ audit_logs|selectattr('action', 'equalto', 'unauthorized_access')|list|length }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Audit Log -->
+        <div class="store-section">
+            <h2>📋 Detailed Audit Log</h2>
+            <div class="audit-log-table">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">ID</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Timestamp</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">User</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Action</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Target</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Details</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">IP Address</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in audit_logs %}
+                        <tr style="border-bottom: 1px solid #e2e8f0; {% if log.action == 'login_failed' or log.action == 'unauthorized_access' %}background: #fef2f2;{% endif %}">
+                            <td style="padding: 8px; font-family: monospace; font-size: 0.875rem;">#{{ log.id }}</td>
+                            <td style="padding: 8px; font-size: 0.875rem;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td style="padding: 8px; font-weight: 600; color: #4f46e5;">{{ log.username }}</td>
+                            <td style="padding: 8px;">
+                                <span class="action-badge action-{{ log.action.replace('_', '-') }}">
+                                    {{ log.action.replace('_', ' ').title() }}
+                                </span>
+                            </td>
+                            <td style="padding: 8px; font-size: 0.875rem;">{{ log.target_type.title() }} #{{ log.target_id }}</td>
+                            <td style="padding: 8px; font-size: 0.875rem; max-width: 400px; word-wrap: break-word;">{{ log.details }}</td>
+                            <td style="padding: 8px; font-size: 0.875rem; color: #64748b; font-family: monospace;">{{ log.ip_address }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            {% if not audit_logs %}
+            <div class="no-data">
+                🔍 No audit logs found matching the current filters.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        function exportAuditLog() {
+            // Create CSV content from the current audit log view
+            const table = document.querySelector('.audit-log-table table');
+            let csv = [];
+            
+            // Get headers
+            const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent);
+            csv.push(headers.join(','));
+            
+            // Get data rows
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const cols = Array.from(row.querySelectorAll('td')).map(td => {
+                    return '"' + td.textContent.replace(/"/g, '""') + '"';
+                });
+                csv.push(cols.join(','));
+            });
+            
+            // Download CSV
+            const csvContent = csv.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'forensic_audit_log_' + new Date().toISOString().split('T')[0] + '.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+
+    <style>
+        .audit-filters {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .filter-row select,
+        .filter-row input {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+        
+        .filter-row select:focus,
+        .filter-row input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+    </style>
+</body>
+</html>

@@ -1,0 +1,181 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Credit Management - Retail Analytics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard">
+        <header class="dashboard-header">
+            <div class="header-left">
+                <h1>💳 Credit Management</h1>
+                <div class="datetime">{{ datetime.now().strftime('%A, %B %d, %Y - %H:%M:%S') }}</div>
+            </div>
+            <div class="user-info">
+                <span>Welcome, <strong>{{ current_user.username }}</strong></span>
+                <a href="{{ url_for('dashboard') }}" class="logout-btn">Back to Dashboard</a>
+            </div>
+        </header>
+
+        <!-- Navigation Menu -->
+        <div class="navigation-menu">
+            <div class="nav-buttons">
+                <a href="{{ url_for('dashboard') }}" class="nav-btn">🏠 Dashboard</a>
+                {% for store in stores %}
+                <a href="{{ url_for('pos_system', store_id=store.id) }}" class="nav-btn">🛒 POS ({{ store.name }})</a>
+                {% endfor %}
+                <a href="{{ url_for('credit_management') }}" class="nav-btn active">💳 Credit Management</a>
+            </div>
+        </div>
+
+        <!-- Credit Summary -->
+        <div class="kpi-grid">
+            <div class="kpi-card total-products">
+                <h3>Active Credits</h3>
+                <div class="kpi-value">{{ active_credits|length }}</div>
+            </div>
+            <div class="kpi-card low-stock">
+                <h3>Overdue Credits</h3>
+                <div class="kpi-value">{{ overdue_credits|length }}</div>
+            </div>
+            <div class="kpi-card total-stores">
+                <h3>Bad Debts</h3>
+                <div class="kpi-value">{{ bad_debts|length }}</div>
+            </div>
+            <div class="kpi-card total-users">
+                <h3>Total Credit Amount</h3>
+                <div class="kpi-value">${{ "{:,.2f}".format(total_credit_amount) }}</div>
+            </div>
+        </div>
+
+        <!-- Add New Credit -->
+        <div class="form-section">
+            <h3>💳 Record New Credit Sale</h3>
+            <form action="{{ url_for('add_credit_sale') }}" method="POST" class="user-form">
+                <input type="text" name="client_name" placeholder="Client Name" required>
+                <input type="text" name="client_phone" placeholder="Phone Number" required>
+                <input type="number" step="0.01" name="amount" placeholder="Credit Amount" required min="0.01">
+                <select name="store_id" required>
+                    <option value="">Select Store</option>
+                    {% for store in stores %}
+                    <option value="{{ store.id }}">{{ store.name }}</option>
+                    {% endfor %}
+                </select>
+                <textarea name="description" placeholder="Description (optional)" rows="2"></textarea>
+                <button type="submit">Record Credit Sale</button>
+            </form>
+        </div>
+
+        <!-- Active Credits -->
+        <div class="store-section">
+            <h2>📋 Active Credits</h2>
+            {% if active_credits %}
+            <div class="credit-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Client Name</th>
+                            <th>Phone</th>
+                            <th>Amount</th>
+                            <th>Date</th>
+                            <th>Days Outstanding</th>
+                            <th>Store</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for credit in active_credits %}
+                        <tr class="{% if credit.days_outstanding > 14 %}overdue{% elif credit.days_outstanding > 7 %}warning{% endif %}">
+                            <td>{{ credit.client_name }}</td>
+                            <td>{{ credit.client_phone }}</td>
+                            <td>${{ "{:,.2f}".format(credit.amount) }}</td>
+                            <td>{{ credit.created_date.strftime('%Y-%m-%d') }}</td>
+                            <td>{{ credit.days_outstanding }} days</td>
+                            <td>{{ credit.store_name }}</td>
+                            <td>
+                                <form action="{{ url_for('repay_credit', credit_id=credit.id) }}" method="POST" style="display: inline;">
+                                    <button type="submit" class="action-btn" onclick="return confirm('Mark as paid?')">✅ Mark Paid</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="no-data">💳 No active credits</div>
+            {% endif %}
+        </div>
+
+        <!-- Bad Debts -->
+        <div class="store-section">
+            <h2>🚫 Bad Debts & Blacklisted Clients</h2>
+            {% if bad_debts %}
+            <div class="credit-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Client Name</th>
+                            <th>Phone</th>
+                            <th>Amount</th>
+                            <th>Original Date</th>
+                            <th>Blacklisted Date</th>
+                            <th>Store</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for debt in bad_debts %}
+                        <tr class="bad-debt">
+                            <td>{{ debt.client_name }}</td>
+                            <td>{{ debt.client_phone }}</td>
+                            <td>${{ "{:,.2f}".format(debt.amount) }}</td>
+                            <td>{{ debt.created_date.strftime('%Y-%m-%d') }}</td>
+                            <td>{{ debt.blacklisted_date.strftime('%Y-%m-%d') }}</td>
+                            <td>{{ debt.store_name }}</td>
+                            <td>
+                                <form action="{{ url_for('remove_bad_debt', debt_id=debt.id) }}" method="POST" style="display: inline;">
+                                    <button type="submit" class="delete-btn" onclick="return confirm('Remove from blacklist?')">🗑️ Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="no-data">🚫 No bad debts recorded</div>
+            {% endif %}
+        </div>
+
+        <!-- Credit Analytics -->
+        <div class="analytics-section">
+            <h3>📊 Credit Analytics</h3>
+            <div class="analytics-grid">
+                <div class="analytics-card">
+                    <div id="creditByStoreChart"></div>
+                </div>
+                <div class="analytics-card">
+                    <div id="creditTrendChart"></div>
+                </div>
+                <div class="analytics-card">
+                    <div id="recoveryRateChart"></div>
+                </div>
+                <div class="analytics-card">
+                    <div id="agingChart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <script>
+        // Credit analytics charts would be generated here
+        // Similar to existing analytics implementation
+    </script>
+</body>
+</html>

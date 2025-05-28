@@ -1,0 +1,34 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Retail Analytics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="login-container">
+        <form method="POST" class="login-form">
+            <h2 class="gradient-text">Create Account</h2>
+            <p style="color: #64748b; margin-bottom: 25px;">Join our retail analytics platform</p>
+            
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <input type="text" name="username" placeholder="Choose a username" required>
+            <input type="email" name="email" placeholder="Enter your email" required>
+            <input type="password" name="password" placeholder="Create a password" required>
+            <button type="submit">Create Account</button>
+            
+            <p>Already have an account? <a href="{{ url_for('login') }}">Sign in here</a></p>
+        </form>
+    </div>
+</body>
+</html>

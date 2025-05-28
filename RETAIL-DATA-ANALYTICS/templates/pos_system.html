@@ -1,0 +1,531 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS System - {{ store.name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        .pos-container {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+            height: 100vh;
+            padding: 20px;
+        }
+        
+        .products-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .cart-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .search-bar {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 15px 50px 15px 20px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 16px;
+            background: #f9fafb;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+        }
+        
+        .scanner-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        
+        .product-item {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .product-item:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+        }
+        
+        .product-item.low-stock {
+            border-color: #fbbf24;
+            background: #fffbeb;
+        }
+        
+        .cart-header {
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .cart-items {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .cart-total {
+            font-size: 24px;
+            font-weight: 700;
+            color: #10b981;
+            text-align: center;
+            padding: 20px;
+            background: #f0fdf4;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .checkout-btn {
+            width: 100%;
+            padding: 15px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .checkout-btn:hover {
+            background: #059669;
+        }
+        
+        .daily-sales {
+            background: #667eea;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .scanner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .scanner-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            position: relative;
+        }
+        
+        #scanner {
+            width: 400px;
+            height: 300px;
+        }
+        
+        .close-scanner {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        @media (max-width: 768px) {
+            .pos-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr auto;
+                height: auto;
+            }
+            
+            .products-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            }
+            
+            #scanner {
+                width: 300px;
+                height: 200px;
+            }
+        }
+        
+        .quantity-controls {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .qty-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            width: 25px;
+            height: 25px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="pos-container">
+        <!-- Products Section -->
+        <div class="products-section">
+            <div class="search-bar">
+                <input type="text" class="search-input" id="productSearch" placeholder="Search products or scan barcode...">
+                <button class="scanner-btn" onclick="startScanner()">📷</button>
+            </div>
+            
+            <div class="products-grid" id="productsGrid">
+                {% for product in products %}
+                <div class="product-item {% if product.quantity <= product.buffer_stock %}low-stock{% endif %}" 
+                     onclick="addToCart({{ product.id }}, '{{ product.name }}', {{ product.price }}, {{ product.quantity }})">
+                    <h4>{{ product.name }}</h4>
+                    {% if product.category %}
+                    <p style="color: #667eea; font-size: 12px;">{{ product.category }}</p>
+                    {% endif %}
+                    <p><strong>${{ "%.2f"|format(product.price) }}</strong></p>
+                    <p style="color: {% if product.quantity <= product.buffer_stock %}#ef4444{% else %}#10b981{% endif %};">
+                        Stock: {{ product.quantity }}
+                    </p>
+                    {% if product.quantity <= product.buffer_stock %}
+                    <p style="color: #ef4444; font-size: 12px;">⚠️ Low Stock</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Cart Section -->
+        <div class="cart-section">
+            <div class="cart-header">
+                <h2>Shopping Cart</h2>
+                <p>{{ store.name }}</p>
+            </div>
+            
+            <div class="daily-sales">
+                <h3>Today's Sales</h3>
+                <div id="dailySalesAmount">${{ "%.2f"|format(daily_sales_total) }}</div>
+            </div>
+            
+            
+            
+            <div class="cart-items" id="cartItems">
+                <!-- Cart items will be added here dynamically -->
+            </div>
+            
+            <div class="cart-total" id="cartTotal">
+                Total: $0.00
+            </div>
+            
+            <button class="checkout-btn" onclick="processCheckout()" id="checkoutBtn" disabled>
+                Complete Sale
+            </button>
+            
+            <button class="checkout-btn" style="background: #667eea; margin-top: 10px;" onclick="clearCart()">
+                Clear Cart
+            </button>
+        </div>
+    </div>
+    
+    <!-- Barcode Scanner Overlay -->
+    <div class="scanner-overlay" id="scannerOverlay">
+        <div class="scanner-container">
+            <button class="close-scanner" onclick="stopScanner()">✕</button>
+            <div id="scanner"></div>
+            <p style="text-align: center; margin-top: 10px;">Point camera at barcode</p>
+        </div>
+    </div>
+
+    <script>
+        let cart = [];
+        let products = {{ products|tojson }};
+        let dailySalesTotal = {{ daily_sales_total }};
+        
+        // Search functionality
+        document.getElementById('productSearch').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const productItems = document.querySelectorAll('.product-item');
+            
+            productItems.forEach(item => {
+                const productName = item.querySelector('h4').textContent.toLowerCase();
+                if (productName.includes(searchTerm)) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
+        
+        function addToCart(productId, name, price, maxQty) {
+            const existingItem = cart.find(item => item.productId === productId);
+            
+            // Get current available stock (original stock minus items already in cart)
+            const cartQty = existingItem ? existingItem.quantity : 0;
+            const availableStock = maxQty - cartQty;
+            
+            if (availableStock <= 0) {
+                alert(`Cannot add more. No stock available.`);
+                return;
+            }
+            
+            if (existingItem) {
+                existingItem.quantity++;
+                existingItem.total = existingItem.quantity * price;
+            } else {
+                cart.push({
+                    productId: productId,
+                    name: name,
+                    price: price,
+                    quantity: 1,
+                    total: price,
+                    maxQty: maxQty
+                });
+            }
+            
+            updateCartDisplay();
+        }
+        
+        function removeFromCart(productId) {
+            cart = cart.filter(item => item.productId !== productId);
+            updateCartDisplay();
+        }
+        
+        function updateQuantity(productId, change) {
+            const item = cart.find(item => item.productId === productId);
+            if (item) {
+                const newQty = item.quantity + change;
+                if (newQty > 0 && newQty <= item.maxQty) {
+                    item.quantity = newQty;
+                    item.total = item.quantity * item.price;
+                    updateCartDisplay();
+                } else if (newQty <= 0) {
+                    removeFromCart(productId);
+                }
+            }
+        }
+        
+        function updateCartDisplay() {
+            const cartItems = document.getElementById('cartItems');
+            const cartTotal = document.getElementById('cartTotal');
+            const checkoutBtn = document.getElementById('checkoutBtn');
+            
+            cartItems.innerHTML = '';
+            let total = 0;
+            
+            cart.forEach(item => {
+                total += item.total;
+                cartItems.innerHTML += `
+                    <div class="cart-item">
+                        <div>
+                            <strong>${item.name}</strong><br>
+                            $${item.price.toFixed(2)} each
+                        </div>
+                        <div class="quantity-controls">
+                            <button class="qty-btn" onclick="updateQuantity(${item.productId}, -1)">-</button>
+                            <span style="margin: 0 10px;">${item.quantity}</span>
+                            <button class="qty-btn" onclick="updateQuantity(${item.productId}, 1)">+</button>
+                            <button class="qty-btn" style="background: #ef4444; margin-left: 10px;" onclick="removeFromCart(${item.productId})">×</button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            cartTotal.textContent = `Total: $${total.toFixed(2)}`;
+            checkoutBtn.disabled = cart.length === 0;
+        }
+        
+        function clearCart() {
+            cart = [];
+            updateCartDisplay();
+        }
+        
+        function processCheckout() {
+            if (cart.length === 0) return;
+            
+            const sales = cart.map(item => ({
+                product_id: item.productId,
+                quantity: item.quantity
+            }));
+            
+            fetch('/process_sale', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    sales: sales,
+                    store_id: {{ store.id }}
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Sale completed! Total: $${data.total.toFixed(2)}`);
+                    
+                    // Update daily sales total
+                    dailySalesTotal += data.total;
+                    document.getElementById('dailySalesAmount').textContent = `$${dailySalesTotal.toFixed(2)}`;
+                    
+                    // Update product quantities in memory and display
+                    cart.forEach(cartItem => {
+                        const product = products.find(p => p.id === cartItem.productId);
+                        if (product) {
+                            product.quantity -= cartItem.quantity;
+                        }
+                    });
+                    
+                    // Update product display with new quantities
+                    updateProductDisplay();
+                    
+                    clearCart();
+                    
+                    // Clear analytics cache to ensure fresh data on dashboard
+                    fetch('/api/clear_analytics_cache', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            store_id: {{ store.id }}
+                        })
+                    });
+                } else {
+                    alert('Error processing sale: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error processing sale');
+            });
+        }
+        
+        // Update product display with current quantities
+        function updateProductDisplay() {
+            const productsGrid = document.getElementById('productsGrid');
+            productsGrid.innerHTML = '';
+            
+            products.forEach(product => {
+                const isLowStock = product.quantity <= product.buffer_stock;
+                const productDiv = document.createElement('div');
+                productDiv.className = `product-item ${isLowStock ? 'low-stock' : ''}`;
+                productDiv.onclick = () => addToCart(product.id, product.name, product.price, product.quantity);
+                
+                productDiv.innerHTML = `
+                    <h4>${product.name}</h4>
+                    ${product.category ? `<p style="color: #667eea; font-size: 12px;">${product.category}</p>` : ''}
+                    <p><strong>$${product.price.toFixed(2)}</strong></p>
+                    <p style="color: ${isLowStock ? '#ef4444' : '#10b981'};">
+                        Stock: ${product.quantity}
+                    </p>
+                    ${isLowStock ? '<p style="color: #ef4444; font-size: 12px;">⚠️ Low Stock</p>' : ''}
+                `;
+                
+                productsGrid.appendChild(productDiv);
+            });
+        }
+        
+        
+        
+        // Barcode Scanner Functions
+        function startScanner() {
+            document.getElementById('scannerOverlay').style.display = 'flex';
+            
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#scanner'),
+                    constraints: {
+                        width: 400,
+                        height: 300,
+                        facingMode: "environment"
+                    },
+                },
+                decoder: {
+                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader"]
+                },
+            }, function(err) {
+                if (err) {
+                    console.log(err);
+                    alert('Camera access denied or not available');
+                    stopScanner();
+                    return;
+                }
+                Quagga.start();
+            });
+            
+            Quagga.onDetected(function(data) {
+                const barcode = data.codeResult.code;
+                document.getElementById('productSearch').value = barcode;
+                
+                // Try to find product by barcode (you can add barcode field to products)
+                const product = products.find(p => p.barcode === barcode || p.name.toLowerCase().includes(barcode.toLowerCase()));
+                if (product) {
+                    addToCart(product.id, product.name, product.price, product.quantity);
+                }
+                
+                stopScanner();
+            });
+        }
+        
+        function stopScanner() {
+            Quagga.stop();
+            document.getElementById('scannerOverlay').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

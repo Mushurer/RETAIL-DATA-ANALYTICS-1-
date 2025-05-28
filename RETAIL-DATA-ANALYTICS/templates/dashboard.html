@@ -1,0 +1,331 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store Analytics Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard">
+        <header class="dashboard-header">
+            <div class="header-left">
+                <h1>{% if current_user.is_admin %}Admin{% else %}Store Owner{% endif %} Dashboard</h1>
+                <div class="datetime">{{ datetime.now().strftime('%A, %B %d, %Y - %H:%M:%S') }}</div>
+            </div>
+            <div class="user-info">
+                <span>Welcome, <strong>{{ current_user.username }}</strong></span>
+                {% if unread_count > 0 %}
+                <span class="message-badge">📩 {{ unread_count }} new</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </header>
+
+        <!-- Daily Sales Summary Section -->
+        {% if daily_sales %}
+        <div class="daily-sales-summary">
+            <h2>📊 Today's Sales Summary</h2>
+            <div class="sales-summary-grid">
+                {% for store in stores %}
+                {% set store_sales = daily_sales[store.id] %}
+                <div class="sales-summary-card">
+                    <h3>🏪 {{ store.name }}</h3>
+                    <div class="sales-stats">
+                        <div class="stat">
+                            <span class="stat-label">Total Sales</span>
+                            <span class="stat-value">${{ "{:,.2f}".format(store_sales.total_amount) }}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Transactions</span>
+                            <span class="stat-value">{{ store_sales.total_sales }}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Items Sold</span>
+                            <span class="stat-value">{{ store_sales.total_quantity }}</span>
+                        </div>
+                    </div>
+                    <div class="sales-date">{{ store_sales.date.strftime('%A, %B %d, %Y') }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- News and Updates Section -->
+        {% if news %}
+        <div class="news-section">
+            <h2>📰 Latest News & Updates</h2>
+            <div class="news-ticker">
+                {% for article in news %}
+                <div class="news-item {% if article.priority == 'high' %}high-priority-news{% endif %}">
+                    <div class="news-icon">
+                        {% if article.priority == 'high' %}🚨{% else %}📢{% endif %}
+                    </div>
+                    <div class="news-content">
+                        <h4>{{ article.title }}</h4>
+                        <p>{{ article.content }}</p>
+                        <small>{{ article.created_date.strftime('%Y-%m-%d %H:%M') }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Messages Section -->
+        {% if messages %}
+        <div class="messages-section">
+            <h2>💬 Messages {% if unread_count > 0 %}<span class="unread-badge">({{ unread_count }} unread)</span>{% endif %}</h2>
+            <div class="messages-list">
+                {% for message in messages[:5] %}
+                <div class="message-item {% if not message.is_read %}unread-message{% endif %}">
+                    <div class="message-header">
+                        <strong>{{ message.subject }}</strong>
+                        <span class="message-date">{{ message.sent_date.strftime('%Y-%m-%d %H:%M') }}</span>
+                        {% if not message.is_read %}
+                        <form action="{{ url_for('mark_message_read_route', message_id=message.id) }}" method="POST" style="display: inline;">
+                            <button type="submit" class="mark-read-btn">✓ Mark Read</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    <p>{{ message.content }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Navigation Menu -->
+        <div class="navigation-menu">
+            <div class="nav-buttons">
+                <a href="{{ url_for('dashboard') }}" class="nav-btn">🏠 Dashboard</a>
+                {% for store in stores %}
+                <a href="{{ url_for('pos_system', store_id=store.id) }}" class="nav-btn">🛒 POS System</a>
+                <a href="{{ url_for('export_csv', store_id=store.id) }}" class="nav-btn">📊 Export Report</a>
+                <a href="{{ url_for('daily_sales_report', store_id=store.id) }}" class="nav-btn">📈 Daily Report</a>
+                {% endfor %}
+                <a href="{{ url_for('credit_management') }}" class="nav-btn">💳 Credit Management</a>
+                <button onclick="showAccountingPage()" class="nav-btn">📊 Accounting</button>
+            </div>
+        </div>
+
+        
+
+        {% for store in stores %}
+        <div class="store-section">
+            <div class="store-header">
+                <h2>{{ store.name }}</h2>
+            </div>
+
+            <!-- Add Product Form -->
+            <div class="form-section">
+                <h3>➕ Add New Product</h3>
+                <form action="{{ url_for('add_product') }}" method="POST" class="user-form">
+                    <input type="hidden" name="store_id" value="{{ store.id }}">
+                    <input type="text" name="name" placeholder="Product Name" required>
+                    <input type="text" name="barcode" placeholder="Barcode (optional)">
+                    <input type="number" name="quantity" placeholder="Initial Quantity" required min="0">
+                    <input type="number" step="0.01" name="price" placeholder="Price ($)" required min="0">
+                    <input type="number" name="buffer_stock" placeholder="Reorder Level" required min="0">
+                    <input type="text" name="category" placeholder="Category (optional)">
+                    <button type="submit">Add Product</button>
+                </form>
+            </div>
+
+            <!-- Products Section -->
+            <div class="collapsible-section">
+                <div class="section-header" onclick="toggleSection('products-{{ store.id }}')">
+                    <h3>📦 Products Inventory <span class="dropdown-arrow">▼</span></h3>
+                </div>
+                <div id="products-{{ store.id }}" class="collapsible-content" style="display: none;">
+                    <div class="products-grid">
+                        {% for product in store.products %}
+                        <div class="product-card {% if product['quantity'] <= product['buffer_stock'] %}low-stock{% endif %}">
+                            {% if product['quantity'] <= product['buffer_stock'] %}
+                            <div class="warning-badge">Low Stock!</div>
+                            {% endif %}
+                            
+                            <h4>{{ product['name'] }}</h4>
+                            {% if product['category'] %}
+                            <p style="color: #667eea; font-weight: 600; margin-bottom: 10px;">{{ product['category'] }}</p>
+                            {% endif %}
+                            
+                            <div class="product-stats">
+                                <div class="stat">
+                                    <span class="stat-label">Current Stock</span>
+                                    <span class="stat-value" style="color: {% if product['quantity'] <= product['buffer_stock'] %}#ef4444{% else %}#10b981{% endif %}">{{ product['quantity'] }}</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-label">Reorder Level</span>
+                                    <span class="stat-value">{{ product['buffer_stock'] }}</span>
+                                </div>
+                            </div>
+                            
+                            <form action="{{ url_for('update_price', product_id=product['id']) }}" method="POST" class="price-form">
+                                <input type="number" step="0.01" name="price" value="{{ "%.2f"|format(product['price']) }}" required>
+                                <button type="submit" class="update-btn">Update Price</button>
+                            </form>
+                            
+                            <form action="{{ url_for('record_sale') }}" method="POST" class="sale-form">
+                                <input type="hidden" name="product_id" value="{{ product['id'] }}">
+                                <input type="number" name="quantity" placeholder="Sold Qty" required min="1" max="{{ product['quantity'] }}">
+                                <button type="submit">Record Sale</button>
+                                <button type="submit" formaction="{{ url_for('delete_product_route', product_id=product['id']) }}" 
+                                        class="delete-btn" onclick="return confirm('Delete this product?')">Delete</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Section -->
+            <div class="analytics-section">
+                <div class="analytics-header">
+                    <h3>📈 Store Analytics</h3>
+                    <div class="analytics-filters">
+                        <select id="dateFilter-{{ store.id }}" onchange="updateAnalytics({{ store.id }})">
+                            <option value="7">Last 7 days</option>
+                            <option value="30" selected>Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                            <option value="365">Last year</option>
+                        </select>
+                        <select id="categoryFilter-{{ store.id }}" onchange="updateAnalytics({{ store.id }})">
+                            <option value="">All Categories</option>
+                            {% for product in store.products %}
+                                {% if product['category'] %}
+                                    <option value="{{ product['category'] }}">{{ product['category'] }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                        <button onclick="exportAnalytics({{ store.id }})" class="export-btn">📊 Export</button>
+                    </div>
+                </div>
+                {% set analytics = generate_analytics(store.id) %}
+                {% if analytics %}
+                <div class="analytics-grid" id="analytics-{{ store.id }}">
+                    <div class="analytics-card">
+                        {{ analytics.sales_by_product | safe }}
+                    </div>
+                    <div class="analytics-card">
+                        {{ analytics.daily_trend | safe }}
+                    </div>
+                    <div class="analytics-card">
+                        {{ analytics.peak_hours | safe }}
+                    </div>
+                    <div class="analytics-card">
+                        {{ analytics.category_performance | safe }}
+                    </div>
+                </div>
+                {% else %}
+                <div class="no-data">
+                    📊 No sales data available yet. Start recording sales to see analytics!
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+        {% if not stores %}
+        <div class="no-data">
+            🏪 No stores assigned to your account yet. Contact your administrator.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Accounting Modal -->
+    <div id="accountingModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📊 Accounting Dashboard</h2>
+                <span class="close" onclick="closeAccountingModal()">&times;</span>
+            </div>
+            <div class="password-section">
+                <input type="password" id="accountingPassword" placeholder="Enter password (0000)">
+                <button onclick="verifyPassword()">Access</button>
+            </div>
+            <div id="accountingContent" style="display: none;">
+                <!-- Accounting content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            const arrow = section.previousElementSibling.querySelector('.dropdown-arrow');
+            
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                arrow.textContent = '▲';
+            } else {
+                section.style.display = 'none';
+                arrow.textContent = '▼';
+            }
+        }
+
+        function showAccountingPage() {
+            document.getElementById('accountingModal').style.display = 'flex';
+        }
+
+        function closeAccountingModal() {
+            document.getElementById('accountingModal').style.display = 'none';
+            document.getElementById('accountingPassword').value = '';
+            document.getElementById('accountingContent').style.display = 'none';
+        }
+
+        function verifyPassword() {
+            const password = document.getElementById('accountingPassword').value;
+            if (password === '1234') {
+                document.querySelector('.password-section').style.display = 'none';
+                document.getElementById('accountingContent').style.display = 'block';
+                loadAccountingData();
+            } else {
+                alert('Incorrect password');
+            }
+        }
+
+        function loadAccountingData() {
+            fetch('/accounting_data')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('accountingContent').innerHTML = data.html;
+                })
+                .catch(error => {
+                    console.error('Error loading accounting data:', error);
+                });
+        }
+
+        function updateAnalytics(storeId) {
+            const dateFilter = document.getElementById(`dateFilter-${storeId}`).value;
+            const categoryFilter = document.getElementById(`categoryFilter-${storeId}`).value;
+            
+            fetch('/update_analytics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    store_id: storeId,
+                    date_filter: dateFilter,
+                    category_filter: categoryFilter
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById(`analytics-${storeId}`).innerHTML = data.html;
+                }
+            });
+        }
+
+        function exportAnalytics(storeId) {
+            window.open(`/export_analytics/${storeId}`, '_blank');
+        }
+    </script>
+</body>
+</html>
